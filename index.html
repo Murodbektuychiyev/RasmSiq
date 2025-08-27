@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RasmSiq — Image Compressor & Crop (No Backend)</title>
+<link rel="icon" href="favicon.jpg" />
+<style>
+  :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa0b4;--accent:#6ee7ff;--radius:12px}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071022,#0f1724);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px}
+  .wrap{width:100%;max-width:1100px;display:grid;grid-template-columns:1fr 360px;gap:20px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);padding:18px;border-radius:var(--radius);box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  h1{margin:0 0 8px;font-size:18px}
+  p.lead{margin:0 0 16px;color:var(--muted);font-size:13px}
+  .controls{display:flex;flex-direction:column;gap:10px}
+  input[type=file]{color:transparent}
+  .btn{background:#0b2330;border:1px solid rgba(255,255,255,0.04);padding:10px 12px;border-radius:10px;color:var(--accent);font-weight:700;cursor:pointer}
+  .row{display:flex;gap:10px;align-items:center}
+  label.small{font-size:12px;color:var(--muted)}
+  .canvas-wrap{background:#081220;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center}
+  canvas{background:#0a1220;border-radius:6px;max-width:100%;height:auto;border:1px solid rgba(255,255,255,0.03)}
+  .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .chip{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:8px;font-size:12px;color:var(--muted)}
+  select,input[type=number],input[type=range]{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:8px;border-radius:8px}
+  .small-muted{font-size:12px;color:var(--muted)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .outputs{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+  .out-item{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border:1px solid rgba(255,255,255,0.02)}
+  a.download{background:linear-gradient(90deg,var(--accent),#9be7ff);color:#012; padding:8px 10px;border-radius:8px;font-weight:800;text-decoration:none}
+  .muted{color:var(--muted);font-size:13px}
+  .flex-between{display:flex;justify-content:space-between;align-items:center}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  /* Crop overlay */
+  .overlay{position:relative;display:inline-block}
+  .sel{position:absolute;border:2px dashed rgba(110,231,255,0.8);background:rgba(110,231,255,0.06);pointer-events:none}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>RasmSiq — Image compress, resize & crop</h1>
+      <p class="lead">Hech qanday backend yo‘q. Brauzerda rasmni crop, resize va compress qilib oling. Bir nechta faylni yuklash va alohida yuklab olish mumkin.</p>
+
+      <div class="controls">
+        <div class="row">
+          <input id="files" type="file" accept="image/*" multiple />
+          <button id="clearAll" class="btn" title="Clear outputs">Clear</button>
+        </div>
+
+        <div class="canvas-wrap">
+          <div class="overlay">
+            <canvas id="preview" width="800" height="500"></canvas>
+            <!-- selection box -->
+            <div id="sel" class="sel" style="display:none"></div>
+          </div>
+
+          <div class="meta">
+            <div class="chip" id="origMeta">No image</div>
+            <div class="chip" id="compMeta">—</div>
+            <div class="chip" id="sizeMeta">—</div>
+          </div>
+
+          <div class="hint">Crop: drag on canvas to draw selection. Press <b>Crop</b> to apply. Use Resize & Quality then <b>Compress & Download</b>.</div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:160px">
+            <label class="small">Format</label><br/>
+            <select id="format">
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/webp">WEBP</option>
+              <option value="image/png">PNG</option>
+            </select>
+          </div>
+
+          <div style="min-width:160px">
+            <label class="small">Quality (<span id="qv">0.8</span>)</label><br/>
+            <input id="quality" type="range" min="0.1" max="1" step="0.05" value="0.8" />
+          </div>
+
+          <div style="min-width:120px">
+            <label class="small">Width (px)</label><br/>
+            <input id="width" type="number" min="1" placeholder="auto" />
+          </div>
+
+          <div style="min-width:120px">
+            <label class="small">Height (px)</label><br/>
+            <input id="height" type="number" min="1" placeholder="auto" />
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="small">Keep aspect</label>
+            <input id="keepAspect" type="checkbox" checked />
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top:10px">
+          <button id="cropBtn" class="btn">Crop</button>
+          <button id="resetCrop" class="btn">Reset Crop</button>
+          <button id="compressBtn" class="btn">Compress & Download</button>
+        </div>
+
+        <div class="outputs" id="outputs"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between">
+        <div>
+          <div class="muted">Quick tips</div>
+          <div class="small-muted">Large quality (0.8–1) = good visual, bigger file. Low (0.4–0.6) saves space.</div>
+        </div>
+        <div>
+          <div class="muted">Supported</div>
+          <div class="small-muted">JPEG, WEBP, PNG (lossless for PNG)</div>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:12px 0" />
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div><b>Workflow</b></div>
+        <ol class="small-muted">
+          <li>Rasm yuklang.</li>
+          <li>Canvas ustida crop chizing (agar kerak bo‘lsa) va <b>Crop</b> bosing.</li>
+          <li>Width/Height kiriting yoki bo‘sh qoldiring.</li>
+          <li>Format va Quality tanlang.</li>
+          <li><b>Compress & Download</b> — har fayl uchun alohida link paydo bo‘ladi.</li>
+        </ol>
+      </div>
+
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:12px 0" />
+
+      <div>
+        <b>Notes</b>
+        <ul class="small-muted">
+          <li>Hammayoqdan brauzer resurslari ishlatiladi — juda katta fayllar brauzerni band qilishi mumkin.</li>
+          <li>WEBP eng yaxshi siqishni beradi (agar brauzer qo‘llab-quvvatlasa).</li>
+          <li>PNG formatida quality parametri e’tibor berilmaydi (lossless yoki 24-bit).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* RasmSiq — client-side image crop/resize/compress */
+const filesEl = document.getElementById('files');
+const preview = document.getElementById('preview');
+const ctx = preview.getContext('2d');
+const sel = document.getElementById('sel');
+const origMeta = document.getElementById('origMeta');
+const compMeta = document.getElementById('compMeta');
+const sizeMeta = document.getElementById('sizeMeta');
+const outputs = document.getElementById('outputs');
+const formatEl = document.getElementById('format');
+const qualityEl = document.getElementById('quality');
+const qv = document.getElementById('qv');
+const widthEl = document.getElementById('width');
+const heightEl = document.getElementById('height');
+const keepAspect = document.getElementById('keepAspect');
+const cropBtn = document.getElementById('cropBtn');
+const resetCrop = document.getElementById('resetCrop');
+const compressBtn = document.getElementById('compressBtn');
+const clearAll = document.getElementById('clearAll');
+
+let img = new Image();
+let currentFile = null;
+let natural = {w:0,h:0};
+let cropRect = null; // {x,y,w,h} in canvas coords
+
+// update quality label
+qualityEl.addEventListener('input', ()=> qv.textContent = qualityEl.value);
+
+// load first image and also support multiple
+filesEl.addEventListener('change', async (e)=>{
+  outputs.innerHTML = '';
+  const list = Array.from(e.target.files || []);
+  if (!list.length) return;
+  // load first file into canvas preview
+  await loadFileToCanvas(list[0]);
+  // also create small output placeholders for each file (processed later)
+  list.forEach(f=>{
+    const item = document.createElement('div');
+    item.className = 'out-item';
+    item.innerHTML = `<div style="flex:1">
+                        <div style="font-weight:700">${f.name}</div>
+                        <div class="small-muted" id="orig-${f.name}">orig: ${formatBytes(f.size)}</div>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                        <a class="download" id="dl-${f.name}" style="display:none">Download</a>
+                      </div>`;
+    outputs.appendChild(item);
+  });
+});
+
+// load image into canvas and reset crop
+function loadFileToCanvas(file){
+  return new Promise((res, rej)=>{
+    const reader = new FileReader();
+    reader.onload = () => {
+      img = new Image();
+      img.onload = ()=>{
+        natural.w = img.naturalWidth;
+        natural.h = img.naturalHeight;
+        currentFile = file;
+        fitCanvasToImage();
+        draw();
+        cropRect = null; sel.style.display='none';
+        origMeta.textContent = `${file.name} • ${natural.w}×${natural.h} • ${formatBytes(file.size)}`;
+        compMeta.textContent = 'Ready';
+        sizeMeta.textContent = '';
+        res();
+      };
+      img.onerror = rej;
+      img.src = reader.result;
+    };
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+function fitCanvasToImage(){
+  // keep canvas max width 800, scale down for big images
+  const maxW = 800, maxH = 600;
+  let w = natural.w, h = natural.h;
+  const ratio = Math.min(maxW/w, maxH/h, 1);
+  preview.width = Math.round(w * ratio);
+  preview.height = Math.round(h * ratio);
+}
+
+// draw image (and crop overlay)
+function draw(){
+  ctx.clearRect(0,0,preview.width,preview.height);
+  // draw image scaled to canvas
+  ctx.drawImage(img, 0, 0, preview.width, preview.height);
+  // if cropRect exists, draw dashed selection (we show via overlay div)
+  if (cropRect){
+    sel.style.display='block';
+    sel.style.left = cropRect.x + 'px';
+    sel.style.top = cropRect.y + 'px';
+    sel.style.width = cropRect.w + 'px';
+    sel.style.height = cropRect.h + 'px';
+  } else {
+    sel.style.display='none';
+  }
+}
+
+// canvas mouse events for crop selection (drag to create)
+let dragging = false, startX=0, startY=0;
+preview.addEventListener('mousedown', (ev)=>{
+  if (!img.src) return;
+  ev.preventDefault();
+  const rect = preview.getBoundingClientRect();
+  startX = ev.clientX - rect.left;
+  startY = ev.clientY - rect.top;
+  dragging = true;
+  cropRect = {x:startX,y:startY,w:0,h:0};
+  draw();
+});
+window.addEventListener('mousemove', (ev)=>{
+  if (!dragging) return;
+  const rect = preview.getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+  cropRect.w = Math.max(2, mx - startX);
+  cropRect.h = Math.max(2, my - startY);
+  // clamp inside canvas
+  if (cropRect.x + cropRect.w > preview.width) cropRect.w = preview.width - cropRect.x;
+  if (cropRect.y + cropRect.h > preview.height) cropRect.h = preview.height - cropRect.y;
+  draw();
+});
+window.addEventListener('mouseup', ()=>{ dragging=false; });
+
+// Crop button: apply crop to image (update image source to cropped data)
+cropBtn.addEventListener('click', ()=>{
+  if (!img.src) return alert('Rasm yuklanmagan.');
+  if (!cropRect) return alert('Iltimos, canvas ustida crop chizing (drag).');
+  // compute ratio from canvas -> natural image
+  const rx = natural.w / preview.width;
+  const ry = natural.h / preview.height;
+  const sx = Math.round(cropRect.x * rx);
+  const sy = Math.round(cropRect.y * ry);
+  const sw = Math.round(cropRect.w * rx);
+  const sh = Math.round(cropRect.h * ry);
+  // create temp canvas to crop original natural image
+  const tmp = document.createElement('canvas');
+  tmp.width = sw; tmp.height = sh;
+  const tctx = tmp.getContext('2d');
+  // draw from original full-size image to temp
+  tctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  // set new img src to cropped dataURL (keep original format)
+  img = new Image();
+  img.onload = ()=>{
+    natural.w = img.naturalWidth;
+    natural.h = img.naturalHeight;
+    fitCanvasToImage();
+    draw();
+    cropRect = null; sel.style.display='none';
+    compMeta.textContent = 'Cropped';
+  };
+  img.src = tmp.toDataURL('image/png');
+});
+
+// reset crop (reload current file back)
+resetCrop.addEventListener('click', ()=>{
+  if (!currentFile) return;
+  loadFileToCanvas(currentFile);
+});
+
+// compress & download (process all selected files)
+compressBtn.addEventListener('click', async ()=>{
+  const list = Array.from(filesEl.files || []);
+  if (!list.length) return alert('Iltimos, rasm faylini tanlang.');
+  outputs.innerHTML = ''; // clear previous outputs and we will recreate
+  for (const f of list){
+    // load each file into img (we reuse same canvas but work on natural data)
+    await loadFileToCanvas(f);
+    // apply any crop is already applied if user cropped before (note: crop only affected first image)
+    // compute target size
+    let targetW = parseInt(widthEl.value) || natural.w;
+    let targetH = parseInt(heightEl.value) || natural.h;
+    if (keepAspect.checked){
+      // maintain aspect ratio
+      const aspect = natural.w / natural.h;
+      if (widthEl.value && !heightEl.value){
+        targetH = Math.round(targetW / aspect);
+      } else if (!widthEl.value && heightEl.value){
+        targetW = Math.round(targetH * aspect);
+      } else if (!widthEl.value && !heightEl.value){
+        targetW = natural.w; targetH = natural.h;
+      } else {
+        // both provided -> adjust height to keep aspect based on width
+        targetH = Math.round(targetW / aspect);
+      }
+    }
+    // create temp canvas for final output at target size
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = targetW;
+    outCanvas.height = targetH;
+    const octx = outCanvas.getContext('2d');
+    // draw image scaled
+    octx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, targetW, targetH);
+    // get blob
+    const mime = formatEl.value;
+    const quality = parseFloat(qualityEl.value);
+    const blob = await canvasToBlob(outCanvas, mime, mime==='image/png'?1:quality);
+    // create download link and display sizes
+    const url = URL.createObjectURL(blob);
+    const item = document.createElement('div');
+    item.className = 'out-item';
+    item.innerHTML = `<div style="flex:1">
+                        <div style="font-weight:700">${f.name}</div>
+                        <div class="small-muted">Orig: ${formatBytes(f.size)} • ${natural.w}×${natural.h}</div>
+                        <div class="small-muted">Out: ${formatBytes(blob.size)} • ${targetW}×${targetH} • ${mime.split('/')[1]}</div>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                        <a class="download" href="${url}" download="${getOutName(f.name,mime)}">Download</a>
+                      </div>`;
+    outputs.appendChild(item);
+  }
+  compMeta.textContent = 'Done';
+});
+
+// helper: canvas -> blob (promisified)
+function canvasToBlob(canvas, mime='image/jpeg', quality=0.8){
+  return new Promise((res)=>{
+    if (mime === 'image/png'){
+      canvas.toBlob(b => res(b), 'image/png');
+    } else {
+      canvas.toBlob(b => res(b), mime, quality);
+    }
+  });
+}
+
+function formatBytes(bytes){
+  if (bytes < 1024) return bytes + ' B';
+  const units = ['KB','MB','GB'];
+  let i = -1; do { bytes = bytes/1024; i++; } while(bytes >= 1024 && i < units.length-1);
+  return bytes.toFixed(2) + ' ' + units[i];
+}
+function getOutName(orig, mime){
+  const ext = mime.split('/')[1].replace('jpeg','jpg');
+  return orig.replace(/\.[^/.]+$/, "") + '_compressed.' + ext;
+}
+
+// Clear outputs & inputs
+clearAll.addEventListener('click', ()=>{
+  outputs.innerHTML = '';
+  filesEl.value = '';
+  currentFile = null;
+  img = new Image();
+  ctx.clearRect(0,0,preview.width,preview.height);
+  origMeta.textContent = 'No image';
+  compMeta.textContent = '—';
+  sizeMeta.textContent = '';
+  cropRect = null;
+  sel.style.display='none';
+});
+</script>
+</body>
+</html>
